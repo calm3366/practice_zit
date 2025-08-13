@@ -1,0 +1,161 @@
+git clone https://github.com/kubernetes-sigs/kubespray
+cd kubespray
+pip3 install -r requirements.txt
+pip3 install jmespath
+
+# если возникает ошибка с совместимостью python
+# Использовать virtualenv с нужной версией Python, Если у тебя установлен Python 3.11
+python3.11 -m venv venv
+source venv/bin/activate
+# или удаляем хвосты старой версии
+sudo rm -rf /Library/Frameworks/Python.framework/Versions/3.9
+sudo rm -rf "/Applications/Python 3.9"
+sudo rm -f /usr/local/bin/python3.9
+sudo rm -f /usr/local/bin/pip3.9
+rm -rf ~/Library/Python/3.9
+rm -rf ~/.local/lib/python3.9
+
+vagrant up
+vagrant reload --provision # для применения изменений provisioners с перезапуском VM
+vagrant destroy -f # Полный сброс Vagrant окружения
+
+# при ошибке версии ansible - обновляем
+ansible-galaxy collection install ansible.posix # при ошибке 
+ansible-galaxy collection install community.general
+ansible-galaxy collection install kubernetes.core
+ansible-galaxy collection install ansible.utils 
+  /Applications/Python\ 3.11/Install\ Certificates.command # выполняем при ошибке
+ansible-galaxy collection install community.crypto
+cp kubespray/plugins/modules/kube.py kubespray/library/kube.py # при ошибке 
+
+
+# 🔗 Подготовка инвентаря для Kubespray
+cp -rfp inventory/sample inventory/mycluster
+# добавить файл inventory/mycluster/hosts.yaml
+
+
+# 🚀 Установка Kubernetes
+ansible-playbook -i inventory/mycluster/hosts.yaml --become --become-user=root -u vagrant cluster.yml
+
+
+# проверка подключения
+mkdir -p ~/.kube
+# cp inventory/mycluster/artifacts/admin.conf ~/.kube/config
+vagrant ssh k8s-master -c "sudo cat /etc/kubernetes/admin.conf" > ~/.kube/config
+kubectl get nodes
+  sudo sed -i 's|https://127.0.0.1:6443|https://192.168.10.10:6443|' /etc/kubernetes/admin.conf # при необходимости
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Ниже были попытки
+
+
+# 🔗 Подготовка инвентаря для Kubespray
+cp -rfp inventory/sample inventory/devops-cluster
+# Обнови inventory/devops-cluster/inventory.ini, указав IP-адреса и роли узлов
+[kube_control_plane]
+k8s-master ansible_host=192.168.10.10 ansible_user=vagrant
+[kube_node]
+k8s-worker1 ansible_host=192.168.10.11 ansible_user=vagrant
+k8s-worker2 ansible_host=192.168.10.12 ansible_user=vagrant
+[etcd]
+k8s-master
+[k8s_cluster:children]
+kube_control_plane
+kube_node
+etcd
+
+
+
+vim inventory/devops-cluster/group_vars/k8s_cluster/k8s-cluster.yml # добавляем при ошибке связи мастера с воркерами
+loadbalancer_apiserver:
+  address: 192.168.10.10
+  port: 6443
+kube_apiserver_ip: "192.168.10.10"
+kubeadm_control_plane_endpoint: "192.168.10.10:6443"
+
+# 🚀 Установка Kubernetes
+ansible-playbook -i inventory/devops-cluster/inventory.ini --become --become-user=root cluster.yml 
+
+# доступ до кластера
+# Копируем kubeconfig с k8s-master на хост
+vagrant ssh k8s-master -c "sudo cat /etc/kubernetes/admin.conf" > ~/.kube/config
+kubectl get nodes
+
+
+
+
+
+### вспомогательные команды
+# сбросить k8s 
+ansible-playbook -i inventory/devops-cluster/inventory.ini reset.yml --become --become-user=root
+# почистить руками на каждом хосте
+ssh vagrant@192.168.10.10 
+sudo kubeadm reset -f
+sudo systemctl stop kubelet
+sudo systemctl stop containerd
+sudo rm -rf /etc/kubernetes
+sudo rm -rf /var/lib/etcd
+sudo rm -rf /var/lib/kubelet
+sudo rm -rf /etc/cni
+sudo rm -rf /opt/cni 
+sudo rm -rf /var/lib/cni 
+sudo rm -rf /run/kubernetes
+sudo rm -rf ~/.kube
+sudo rm -rf /etc/systemd/system/kubelet.service.d
+sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F && sudo iptables -X
+sudo systemctl restart containerd
+sudo systemctl restart kubelet
+
+# если заняты порты при установке
+sudo systemctl stop kubelet
+sudo ss -tulpn | grep -E '6443|10259|10257|10250'  # Убедись, что порты освободились 
+  sudo kill <PID>
+sudo rm -rf /etc/kubernetes
+sudo rm -rf /var/lib/etcd
+sudo rm -rf ~/.kube
+sudo systemctl start kubelet
+
+
+# создаем вручную серты на мастере в /etc/kubernetes/pki/ если не создались автоматом
+sudo rm -rf /etc/kubernetes/ssl
+sudo rm -rf /etc/kubernetes/pki
+# но сначала изменить 
+  sudo sed -i 's|controlPlaneEndpoint: "lb-apiserver.kubernetes.local:6443"|controlPlaneEndpoint: "192.168.10.10:6443"|' /etc/kubernetes/kubeadm-config.yaml
+sudo kubeadm init phase certs all --config /etc/kubernetes/kubeadm-config.yaml
+
+
+# создать вручную конфиг - grep server /etc/kubernetes/admin.conf
+sudo kubeadm init phase kubeconfig admin --config /etc/kubernetes/kubeadm-config.yaml
+  sudo sed -i 's|https://lb-apiserver.kubernetes.local:6443|https://192.168.10.10:6443|' /etc/kubernetes/admin.conf
+  echo "192.168.10.10 lb-apiserver.kubernetes.local" | sudo tee -a /etc/hosts
+
+sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml 
+  vim /etc/kubernetes/manifests/kube-apiserver.yaml # проверка
+# sudo kubeadm init --apiserver-advertise-address=192.168.10.10 --pod-network-cidr=10.233.64.0/18
+# игнорировать ошибки
+# sudo kubeadm init --apiserver-advertise-address=192.168.10.10 --pod-network-cidr=10.233.64.0/18 \
+  # --ignore-preflight-errors=Port-10250,DirAvailable--var-lib-etcd
+
+
+
+# назначить kubernetes-admin нужные права через RBAC /// даст kubernetes-admin полный доступ ко всем ресурсам, включая secrets в kube-system
+sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf create clusterrolebinding kubeadm-bootstrap-token \
+  --clusterrole cluster-admin \
+  --user kubernetes-admin
+
+
+# создать вручную токен на мастере
+sudo kubeadm token create --print-join-command
+# kubeadm join 127.0.0.1:6443 --token r62ytv.slhk5opg2kume54h --discovery-token-ca-cert-hash sha256:ecaecc24d9306a1670d31e9901791c1befb36f2f0a6b10756f9d907855ce2497 
