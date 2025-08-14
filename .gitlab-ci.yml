@@ -1,0 +1,24 @@
+# порядок выполнения этапов
+stages:
+  - test
+  - setup
+
+# установка nginx
+# здесь и далее добавляем tag чтобы использовался runner установленный на виртуалке 
+install_nginx:
+  stage: setup
+  tags:
+    - m1pro
+  script:
+    - sudo yum install -y nginx
+
+
+# which nginx — проверяет, установлен ли nginx и выводит его версию
+# Если nginx отсутствует, пайплайн завершится ошибкой на этом этапе
+check_nginx:
+  stage: test
+  tags:
+    - m1pro
+  script:
+    - echo "Проверяем наличие nginx"
+    - which nginx && nginx -v
