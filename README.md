@@ -32,11 +32,20 @@
 - Как вы проверите, слушает ли сервис нужный порт?
 - Какие команды вы используете для диагностики сетевых проблем?
 
+## 1. Тестовое окружение и nginx 
+Собрали VM с помощью vagrant. Установили и настроили nginx для автостарта
+![Тестовое окружение и nginx](img/1.png)
 
-## Создаем виртуальные машины согласно ТЗ
+## 2. Простой  [.gitlab-ci.yml](.gitlab-ci.yml) для проверки наличия установленного nginx
+![gitlab](img/2.png)
+![gitlab2](img/3.png)
+## 3. Простой  [Dockerfile](Dockerfile) поднимается nginx и отвечает на curl 
+![docker](img/4.png)
+## 4. Простой [deployment.yaml](deployment.yaml) для работы с Kubernetes
+### Создаем виртуальные машины согласно ТЗ
 `vagrant up`
 
-### Загружаем kubespray (не ищем легких путей и создаем кластер из мастера и 2 воркер нод) и дозагружаем зависимости
+### Загружаем kubespray (не ищем легких путей и создаем кластер из мастера и 2 воркер нод ;) и дозагружаем зависимости
 git clone https://github.com/kubernetes-sigs/kubespray
 cd kubespray
 pip3 install -r requirements.txt
@@ -66,9 +75,9 @@ cp kubespray/plugins/modules/kube.py kubespray/library/kube.py
 `vagrant ssh k8s-master -c "sudo cat /etc/kubernetes/admin.conf" > ~/.kube/config`
 ### Проверяем
 `kubectl get nodes`
+![k8s](img/5.png)
 
-
-
+## 5. Ответы на вопросы
 #### Чем отличается apt update от apt upgrade?
 apt update - обновляет списки репозиториев, указанные в файле /etc/apt/sources.list , актуальные версии доступных пакетов
 
